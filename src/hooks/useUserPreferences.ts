@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 export function useUserPreferences() {
@@ -38,6 +38,7 @@ export function useUserPreferences() {
     async (updates: {
       last_compare_left_id?: string | null;
       last_compare_right_id?: string | null;
+      comparison_workbench?: Record<string, unknown>[] | null;
     }) => {
       setLoading(true);
       setError(null);

@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     last_compare_left_id UUID REFERENCES cards(id) ON DELETE SET NULL,
     last_compare_right_id UUID REFERENCES cards(id) ON DELETE SET NULL,
+    comparison_workbench JSONB DEFAULT '[]',
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
