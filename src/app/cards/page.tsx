@@ -106,7 +106,7 @@ export default function CardsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-2xl overflow-x-auto whitespace-nowrap scrollbar-hide no-scrollbar w-full">
+        <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-2xl overflow-x-auto whitespace-nowrap scrollbar-hide no-scrollbar w-full sm:w-auto shrink-0">
           <Button
             variant={filterBox === null ? "default" : "ghost"}
             size="sm"
