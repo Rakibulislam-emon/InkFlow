@@ -43,6 +43,7 @@ export interface Settings {
   daily_goal: number;
   show_hints: boolean;
   sound_enabled: boolean;
+  box_count: number;
   last_compare_left_id?: string;
   last_compare_right_id?: string;
 }

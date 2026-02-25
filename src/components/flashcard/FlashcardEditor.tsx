@@ -111,6 +111,7 @@ export function FlashcardEditor({
       tags,
       notes,
       image_url: initialData?.image_url || "",
+      box: initialData?.box ?? 1,
     };
 
     let result;

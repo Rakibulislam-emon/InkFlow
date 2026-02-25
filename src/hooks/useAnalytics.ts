@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Card } from "@/types";
+import { type Card } from "@/types";
+import { useSettings } from "@/hooks/useSettings";
 
 interface DailyActivity {
   date: string;
@@ -39,6 +40,7 @@ export function useAnalytics() {
   >([]);
   const [reviewHistory, setReviewHistory] = useState<ReviewSessionData[]>([]);
   const [totalReviews, setTotalReviews] = useState(0);
+  const { boxes: settingsBoxes } = useSettings();
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -49,14 +51,21 @@ export function useAnalytics() {
       if (!user) return;
 
       // 1. Fetch Cards Stats
-      const { data: cards, error: cardsError } = await supabase
+      const { data: cardsRaw, error: cardsError } = await supabase
         .from("cards")
-        .select("*");
+        .select("*")
+        .eq("user_id", user.id);
 
       if (cardsError) throw cardsError;
+      const cards = (cardsRaw || []) as Card[];
+
+      const maxBoxId =
+        settingsBoxes.length > 0
+          ? Math.max(...settingsBoxes.map((b) => b.id))
+          : 5;
 
       const totalCards = cards.length;
-      const masteredCards = cards.filter((c) => c.box === 5).length;
+      const masteredCards = cards.filter((c) => c.box === maxBoxId).length;
       const dueToday = cards.filter(
         (c) => new Date(c.next_review) <= new Date(),
       ).length;
@@ -75,12 +84,17 @@ export function useAnalytics() {
           : 0;
 
       // 2. Leitner Box Distribution
-      const boxes = [0, 0, 0, 0, 0];
+      const distribution = new Array(settingsBoxes.length || 5).fill(0);
       cards.forEach((c) => {
-        const box = Math.min(Math.max(c.box || 1, 1), 5);
-        boxes[box - 1]++;
+        const boxIndex = settingsBoxes.findIndex((b) => b.id === c.box);
+        if (boxIndex !== -1) {
+          distribution[boxIndex]++;
+        } else {
+          // Fallback for Box 1 or unexpected values
+          distribution[0]++;
+        }
       });
-      setBoxDistribution(boxes);
+      setBoxDistribution(distribution);
 
       // 3. Most Confused Letters
       const letterErrors = cards
@@ -98,13 +112,14 @@ export function useAnalytics() {
       const { data: sessions, error: sessionsError } = await supabase
         .from("review_sessions")
         .select("*")
+        .eq("user_id", user.id)
         .order("date", { ascending: false });
 
       if (sessionsError) throw sessionsError;
 
-      setReviewHistory(sessions.slice(0, 20) as ReviewSessionData[]);
+      setReviewHistory((sessions || []).slice(0, 20) as ReviewSessionData[]);
       setTotalReviews(
-        sessions.reduce((sum, s) => sum + (s.cards_reviewed || 0), 0),
+        (sessions || []).reduce((sum, s) => sum + (s.cards_reviewed || 0), 0),
       );
 
       // 5. Daily Activity (last 30 days)
@@ -115,7 +130,7 @@ export function useAnalytics() {
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().split("T")[0];
 
-        const daySessions = sessions.filter((s) => {
+        const daySessions = (sessions || []).filter((s) => {
           const sDate = new Date(s.date).toISOString().split("T")[0];
           return sDate === dateStr;
         });
@@ -140,7 +155,7 @@ export function useAnalytics() {
 
       // 6. Calculate Streak
       let streak = 0;
-      if (sessions.length > 0) {
+      if (sessions && sessions.length > 0) {
         const today = new Date().setHours(0, 0, 0, 0);
         let lastDate = new Date(sessions[0].date).setHours(0, 0, 0, 0);
 
@@ -165,7 +180,7 @@ export function useAnalytics() {
         dueToday,
         accuracy,
         upcomingEvents: cards
-          .filter((c) => new Date(c.next_review) > new Date())
+          .filter((c) => new Date(c.next_review) <= new Date())
           .sort(
             (a, b) =>
               new Date(a.next_review).getTime() -
@@ -178,7 +193,7 @@ export function useAnalytics() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [settingsBoxes]);
 
   useEffect(() => {
     fetchStats();

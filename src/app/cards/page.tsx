@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Loader2, Library } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, Loader2, Library, Settings } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Flashcard } from "@/components/flashcard/Flashcard";
@@ -14,11 +15,13 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { useFlashcards } from "@/hooks/useFlashcards";
+import { useSettings } from "@/hooks/useSettings";
 import { Card as CardType } from "@/types";
 import { cn } from "@/lib/utils";
 
 export default function CardsPage() {
   const { getCards, loading, error } = useFlashcards();
+  const { boxes } = useSettings();
   const [cards, setCards] = useState<CardType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -81,7 +84,9 @@ export default function CardsPage() {
               </DialogTitle>
             </DialogHeader>
             <FlashcardEditor
-              initialData={editingCard || undefined}
+              initialData={
+                editingCard || (filterBox ? { box: filterBox } : undefined)
+              }
               onSuccess={() => {
                 setIsEditorOpen(false);
                 setEditingCard(null);
@@ -120,22 +125,32 @@ export default function CardsPage() {
           >
             All
           </Button>
-          {[1, 2, 3, 4, 5].map((box) => (
+          {boxes.map((box) => (
             <Button
-              key={box}
-              variant={filterBox === box ? "default" : "ghost"}
+              key={box.id}
+              variant={filterBox === box.id ? "default" : "ghost"}
               size="sm"
-              onClick={() => setFilterBox(box)}
+              onClick={() => setFilterBox(box.id)}
               className={cn(
                 "rounded-xl px-4 h-9",
-                filterBox === box
+                filterBox === box.id
                   ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm transition-all"
                   : "text-slate-500 hover:text-indigo-600",
               )}
             >
-              Box {box}
+              {box.name}
             </Button>
           ))}
+          <Link href="/settings">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-slate-400 hover:text-indigo-600 rounded-xl px-3 transition-colors"
+              title="Manage Boxes"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          </Link>
         </div>
       </div>
 

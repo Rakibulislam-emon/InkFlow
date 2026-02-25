@@ -39,6 +39,9 @@ export function useUserPreferences() {
       last_compare_left_id?: string | null;
       last_compare_right_id?: string | null;
       comparison_workbench?: Record<string, unknown>[] | null;
+      leitner_boxes?:
+        | { id: number; name: string; intervalDays: number }[]
+        | null;
     }) => {
       setLoading(true);
       setError(null);

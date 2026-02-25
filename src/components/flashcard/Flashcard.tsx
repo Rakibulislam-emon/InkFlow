@@ -10,8 +10,6 @@ import {
   RotateCcw,
   Trash2,
   Loader2,
-  PenTool,
-  X as CloseIcon,
   ArrowLeftRight,
   Pencil,
 } from "lucide-react";
@@ -19,7 +17,6 @@ import { Button } from "@/components/ui/Button";
 import Image from "next/image";
 import Link from "next/link";
 import { useFlashcards } from "@/hooks/useFlashcards";
-import { PracticeCanvas } from "./PracticeCanvas";
 import { getConfusionGroupForChar } from "@/lib/confusion-groups";
 
 interface FlashcardProps {
@@ -40,23 +37,16 @@ export function Flashcard({
   onEdit,
 }: FlashcardProps) {
   const [localIsFlipped, setLocalIsFlipped] = useState(false);
-  const [isPracticeMode, setIsPracticeMode] = useState(false);
   const { deleteCard, loading: isDeleting } = useFlashcards();
 
   const isFlipped =
     controlledIsFlipped !== undefined ? controlledIsFlipped : localIsFlipped;
   const toggleFlip = () => {
-    if (isPracticeMode) return; // Prevent flip while practicing
     if (onFlip) {
       onFlip();
     } else {
       setLocalIsFlipped(!localIsFlipped);
     }
-  };
-
-  const togglePracticeMode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsPracticeMode(!isPracticeMode);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
@@ -91,13 +81,6 @@ export function Flashcard({
         {/* Front Side: Image */}
         <div className="absolute inset-0 flashcard-front">
           <Card className="w-full h-full overflow-hidden border-2 hover:border-indigo-500 transition-colors bg-white dark:bg-slate-900 shadow-lg relative">
-            {/* Practice Mode Overlay */}
-            {isPracticeMode && (
-              <div className="absolute inset-0 z-20 bg-white/40 dark:bg-slate-900/40 backdrop-blur-[1px]">
-                <PracticeCanvas />
-              </div>
-            )}
-
             <CardContent className="p-0 h-full flex flex-col">
               <div className="relative flex-1 bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-8">
                 {card.image_url ? (
@@ -105,10 +88,7 @@ export function Flashcard({
                     src={card.image_url}
                     alt="Flashcard reference"
                     fill
-                    className={cn(
-                      "object-contain p-6 transition-opacity",
-                      isPracticeMode ? "opacity-50" : "opacity-100",
-                    )}
+                    className="object-contain p-6 transition-opacity opacity-100"
                     unoptimized={card.image_url.includes("supabase.co")}
                   />
                 ) : (
@@ -119,32 +99,9 @@ export function Flashcard({
 
                 {/* Top Controls */}
                 <div className="absolute top-4 right-4 flex gap-2">
-                  <Button
-                    variant={isPracticeMode ? "default" : "secondary"}
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 rounded-full shadow-lg z-30 transition-all",
-                      isPracticeMode
-                        ? "bg-indigo-600 hover:bg-indigo-700"
-                        : "bg-white/90 dark:bg-slate-800/90",
-                    )}
-                    onClick={togglePracticeMode}
-                    title={
-                      isPracticeMode ? "Exit Practice" : "Practice Tracing"
-                    }
-                  >
-                    {isPracticeMode ? (
-                      <CloseIcon className="w-4 h-4 text-white" />
-                    ) : (
-                      <PenTool className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-                    )}
-                  </Button>
-
-                  {!isPracticeMode && (
-                    <div className="text-slate-400 group-hover:text-indigo-500 transition-colors bg-white/90 dark:bg-slate-800/90 p-2 rounded-full shadow-sm">
-                      <Maximize2 className="w-5 h-5" />
-                    </div>
-                  )}
+                  <div className="text-slate-400 group-hover:text-indigo-500 transition-colors bg-white/90 dark:bg-slate-800/90 p-2 rounded-full shadow-sm">
+                    <Maximize2 className="w-5 h-5" />
+                  </div>
                 </div>
 
                 <div className="absolute bottom-4 left-4 flex flex-wrap gap-2 z-10">
@@ -161,9 +118,7 @@ export function Flashcard({
               </div>
               <div className="h-16 bg-white dark:bg-slate-900 border-t flex items-center justify-center">
                 <span className="text-sm font-medium text-slate-500">
-                  {isPracticeMode
-                    ? "Tracing practice active"
-                    : "Tap to reveal transcription"}
+                  Tap to reveal transcription
                 </span>
               </div>
             </CardContent>

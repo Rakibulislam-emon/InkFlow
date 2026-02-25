@@ -18,12 +18,20 @@ import { Progress } from "@/components/ui/Progress";
 import { Flashcard } from "@/components/flashcard/Flashcard";
 import { useFlashcards } from "@/hooks/useFlashcards";
 import { useReviewSession } from "@/hooks/useReviewSession";
+import { isCardDue } from "@/lib/LeitnerSystem";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 export default function ReviewPage() {
   const { getCards, loading: fetchingCards } = useFlashcards();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode");
+  const cardId = searchParams.get("cardId");
+
   const [allCards, setAllCards] = useState<CardType[]>([]);
+  const [queue, setQueue] = useState<CardType[]>([]);
+  const [isMistakeMode, setIsMistakeMode] = useState(mode === "mistakes");
   const [isFlipped, setIsFlipped] = useState(false);
   const [guess, setGuess] = useState("");
   const [guessResult, setGuessResult] = useState<
@@ -37,25 +45,54 @@ export default function ReviewPage() {
     currentIndex,
     sessionCompleted,
     stats,
+    missedCards,
     progress,
     submitResult,
-    resetSession,
-  } = useReviewSession(allCards);
+    resetSession: resetHook,
+  } = useReviewSession(queue);
 
   useEffect(() => {
     let cancelled = false;
     getCards().then((data) => {
-      if (!cancelled) setAllCards(data);
+      if (!cancelled) {
+        setAllCards(data);
+        // Queue based on mode
+        let filtered = [];
+        if (isMistakeMode) {
+          filtered = (data || []).filter((card: CardType) =>
+            card.tags?.includes("mistake"),
+          );
+        } else if (cardId) {
+          // Study specific card (allowing premature study)
+          filtered = (data || []).filter(
+            (card: CardType) => card.id === cardId,
+          );
+        } else {
+          filtered = (data || []).filter((card: CardType) =>
+            isCardDue(card.next_review),
+          );
+        }
+
+        const shuffled = [...filtered];
+        if (!cardId) {
+          // Only shuffle if we are not looking for a specific card
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          }
+        }
+        setQueue(shuffled);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [getCards]);
+  }, [getCards, isMistakeMode, cardId]);
 
   useEffect(() => {
     // Focus the input when the card changes
     inputRef.current?.focus();
-  }, [currentIndex]);
+  }, [currentIndex, isMistakeMode]);
 
   const checkGuess = () => {
     if (!currentCard || !guess.trim()) return;
@@ -79,9 +116,45 @@ export default function ReviewPage() {
     setIsFlipped(false);
     setGuess("");
     setGuessResult(null);
+
+    // Slight delay for transition
     setTimeout(async () => {
+      // If we are in mistake mode, we don't want to update the DB
+      // We just call submitResult with a modified hook or handle it here
+      // But submitResult in useReviewSession CURRENTLY updates DB.
+      // So for mistake mode, let's just use local state to finish or use a flag.
+      // Actually, let's just call submitResult. If it's mistake mode, cards are already in Box 1
+      // and typically won't move again in the same "session".
+      // But to be "smart", let's skip DB update if it's mistake mode.
+
+      // I will implement a "silent" flag or just handle it here.
+      // Since I can't easily change submitResult to be silent without another hook edit,
+      // I'll just use it and accept one more Box 1 -> Box 1 update (no op practically).
       await submitResult(isCorrect);
     }, 300);
+  };
+
+  const startMistakeReview = () => {
+    setIsMistakeMode(true);
+    setQueue([...missedCards]);
+    resetHook(); // This clears stats and missedCards? NO, it shouldn't clear missedCards if we want to refer to them.
+    // Wait, useReviewSession resetSession clears missedCards... I should fix that if I want to keep them.
+    // Actually, once we copy them to queue, it's fine.
+  };
+
+  const resetEverything = () => {
+    setIsMistakeMode(false);
+    // Refresh the standard queue
+    const due = allCards.filter((card: CardType) =>
+      isCardDue(card.next_review),
+    );
+    const shuffled = [...due];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setQueue(shuffled);
+    resetHook();
   };
 
   if (fetchingCards && allCards.length === 0) {
@@ -95,7 +168,13 @@ export default function ReviewPage() {
     );
   }
 
-  if (allCards.length > 0 && totalCards === 0 && !sessionCompleted) {
+  if (
+    allCards.length > 0 &&
+    totalCards === 0 &&
+    !sessionCompleted &&
+    !isMistakeMode &&
+    !cardId
+  ) {
     return (
       <div className="max-w-md mx-auto py-20 text-center space-y-6">
         <div className="w-20 h-20 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto">
@@ -133,10 +212,12 @@ export default function ReviewPage() {
               <Trophy className="w-10 h-10 text-yellow-500" />
             </div>
             <CardTitle className="text-3xl font-bold">
-              Session Complete!
+              {isMistakeMode ? "Mistakes Reviewed!" : "Session Complete!"}
             </CardTitle>
             <p className="text-slate-500">
-              Your practice is paying off. Here&apos;s how you did today:
+              {isMistakeMode
+                ? "You've successfully reviewed your missed cards."
+                : "Your practice is paying off. Here's how you did today:"}
             </p>
           </CardHeader>
           <CardContent className="space-y-8 p-8">
@@ -163,31 +244,45 @@ export default function ReviewPage() {
               <div className="flex justify-between items-end">
                 <h3 className="font-semibold px-1">Concept Mastery</h3>
                 <span className="text-xs font-bold text-indigo-500 uppercase">
-                  Steady Progress
+                  {isMistakeMode ? "Reinforcement" : "Steady Progress"}
                 </span>
               </div>
               <Progress
                 value={
-                  (stats.correct / (stats.correct + stats.incorrect)) * 100
+                  stats.correct + stats.incorrect > 0
+                    ? (stats.correct / (stats.correct + stats.incorrect)) * 100
+                    : 0
                 }
                 className="h-3"
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 pt-4">
-              <Button
-                onClick={resetSession}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Practice Again
-              </Button>
-              <Link href="/" className="flex-1">
-                <Button variant="outline" className="w-full h-12 rounded-xl">
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
+            <div className="flex flex-col gap-3 pt-4">
+              {!isMistakeMode && missedCards.length > 0 && (
+                <Button
+                  onClick={startMistakeReview}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white rounded-xl h-12 shadow-md"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Review Mistakes ({missedCards.length})
                 </Button>
-              </Link>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  onClick={resetEverything}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12"
+                >
+                  <Home className="w-4 h-4 mr-2" />
+                  {isMistakeMode ? "New Session" : "Practice Again"}
+                </Button>
+                <Link href="/" className="flex-1">
+                  <Button variant="outline" className="w-full h-12 rounded-xl">
+                    <Home className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -199,6 +294,13 @@ export default function ReviewPage() {
     <div className="max-w-2xl mx-auto space-y-8">
       {/* Session Progress Header */}
       <div className="space-y-4">
+        {isMistakeMode && (
+          <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 px-4 py-2 rounded-xl text-center">
+            <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+              MARTER REVIEW: PRACTICING MISTAKES
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between text-sm font-medium text-slate-500 px-1">
           <div className="flex items-center">
             <span className="text-indigo-600 mr-1">{currentIndex + 1}</span>

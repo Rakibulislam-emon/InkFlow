@@ -12,9 +12,15 @@ export function useFlashcards() {
     setLoading(true);
     setError(null);
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
       const { data, error: sbError } = await supabase
         .from("cards")
         .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
       if (sbError) throw sbError;
@@ -37,7 +43,6 @@ export function useFlashcards() {
         | "created_at"
         | "updated_at"
         | "user_id"
-        | "box"
         | "next_review"
         | "correct_count"
         | "incorrect_count"
@@ -79,7 +84,7 @@ export function useFlashcards() {
               ...cardData,
               image_url: imageUrl,
               user_id: user.id,
-              box: 1,
+              box: cardData.box || 1,
               next_review: new Date().toISOString(),
             },
           ])
@@ -88,8 +93,10 @@ export function useFlashcards() {
 
         if (sbError) throw sbError;
         return data as Card;
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : "An unknown error occurred",
+        );
         return null;
       } finally {
         setLoading(false);

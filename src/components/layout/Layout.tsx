@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   Library,
   PlayCircle,
-  PenTool,
   Settings,
   Menu,
   X,
@@ -24,7 +23,6 @@ const navItems = [
   { name: "My Cards", href: "/cards", icon: Library },
   { name: "Compare", href: "/compare", icon: ArrowLeftRight },
   { name: "Review", href: "/review", icon: PlayCircle },
-  { name: "Practice", href: "/practice", icon: PenTool },
   { name: "Progress", href: "/progress", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
