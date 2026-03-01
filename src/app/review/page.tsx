@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Card as CardType } from "@/types";
 import {
   Check,
   X,
-  ArrowRight,
   Home,
   RefreshCw,
   Trophy,
   Loader2,
   Keyboard,
+  Flame,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -37,6 +38,10 @@ export default function ReviewPage() {
   const [guessResult, setGuessResult] = useState<
     "correct" | "incorrect" | null
   >(null);
+  const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
+  const [showStreakPop, setShowStreakPop] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -56,14 +61,12 @@ export default function ReviewPage() {
     getCards().then((data) => {
       if (!cancelled) {
         setAllCards(data);
-        // Queue based on mode
         let filtered = [];
         if (isMistakeMode) {
           filtered = (data || []).filter((card: CardType) =>
             card.tags?.includes("mistake"),
           );
         } else if (cardId) {
-          // Study specific card (allowing premature study)
           filtered = (data || []).filter(
             (card: CardType) => card.id === cardId,
           );
@@ -75,7 +78,6 @@ export default function ReviewPage() {
 
         const shuffled = [...filtered];
         if (!cardId) {
-          // Only shuffle if we are not looking for a specific card
           for (let i = shuffled.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -90,61 +92,94 @@ export default function ReviewPage() {
   }, [getCards, isMistakeMode, cardId]);
 
   useEffect(() => {
-    // Focus the input when the card changes
-    inputRef.current?.focus();
-  }, [currentIndex, isMistakeMode]);
+    if (!isTransitioning) {
+      inputRef.current?.focus();
+    }
+  }, [currentIndex, isMistakeMode, isTransitioning]);
 
-  const checkGuess = () => {
+  const checkGuess = useCallback(() => {
     if (!currentCard || !guess.trim()) return;
     const isCorrect =
       guess.trim().toLowerCase() ===
       currentCard.correct_char.trim().toLowerCase();
     setGuessResult(isCorrect ? "correct" : "incorrect");
     setIsFlipped(true);
-  };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && guess.trim()) {
-      e.preventDefault();
-      if (guessResult === null) {
-        checkGuess();
+    if (isCorrect) {
+      const newStreak = streak + 1;
+      setStreak(newStreak);
+      if (newStreak > bestStreak) {
+        setBestStreak(newStreak);
       }
+      if (newStreak >= 3 && newStreak % 3 === 0) {
+        setShowStreakPop(true);
+        setTimeout(() => setShowStreakPop(false), 1500);
+      }
+    } else {
+      setStreak(0);
     }
-  };
+  }, [currentCard, guess, streak, bestStreak]);
 
-  const handleResponse = async (isCorrect: boolean) => {
-    setIsFlipped(false);
-    setGuess("");
-    setGuessResult(null);
+  const handleResponse = useCallback(
+    async (isCorrect: boolean) => {
+      if (isTransitioning) return;
+      setIsTransitioning(true);
+      setIsFlipped(false);
+      setGuess("");
+      setGuessResult(null);
 
-    // Slight delay for transition
-    setTimeout(async () => {
-      // If we are in mistake mode, we don't want to update the DB
-      // We just call submitResult with a modified hook or handle it here
-      // But submitResult in useReviewSession CURRENTLY updates DB.
-      // So for mistake mode, let's just use local state to finish or use a flag.
-      // Actually, let's just call submitResult. If it's mistake mode, cards are already in Box 1
-      // and typically won't move again in the same "session".
-      // But to be "smart", let's skip DB update if it's mistake mode.
+      setTimeout(async () => {
+        await submitResult(isCorrect);
+        setIsTransitioning(false);
+      }, 300);
+    },
+    [submitResult, isTransitioning],
+  );
 
-      // I will implement a "silent" flag or just handle it here.
-      // Since I can't easily change submitResult to be silent without another hook edit,
-      // I'll just use it and accept one more Box 1 -> Box 1 update (no op practically).
-      await submitResult(isCorrect);
-    }, 300);
-  };
+  // Keyboard handler: Enter to check guess, then Enter again to advance
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      if (sessionCompleted) return;
+
+      // If card is not flipped and we have a guess, check it
+      if (!isFlipped && guess.trim()) {
+        e.preventDefault();
+        checkGuess();
+        return;
+      }
+
+      // If card is flipped (showing result), Enter advances based on guess result
+      if (isFlipped && guessResult !== null) {
+        e.preventDefault();
+        handleResponse(guessResult === "correct");
+        return;
+      }
+    },
+    [
+      isFlipped,
+      guess,
+      guessResult,
+      checkGuess,
+      handleResponse,
+      sessionCompleted,
+    ],
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   const startMistakeReview = () => {
     setIsMistakeMode(true);
     setQueue([...missedCards]);
-    resetHook(); // This clears stats and missedCards? NO, it shouldn't clear missedCards if we want to refer to them.
-    // Wait, useReviewSession resetSession clears missedCards... I should fix that if I want to keep them.
-    // Actually, once we copy them to queue, it's fine.
+    setStreak(0);
+    resetHook();
   };
 
   const resetEverything = () => {
     setIsMistakeMode(false);
-    // Refresh the standard queue
     const due = allCards.filter((card: CardType) =>
       isCardDue(card.next_review),
     );
@@ -154,6 +189,8 @@ export default function ReviewPage() {
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     setQueue(shuffled);
+    setStreak(0);
+    setBestStreak(0);
     resetHook();
   };
 
@@ -204,6 +241,11 @@ export default function ReviewPage() {
   }
 
   if (sessionCompleted) {
+    const accuracy =
+      stats.correct + stats.incorrect > 0
+        ? Math.round((stats.correct / (stats.correct + stats.incorrect)) * 100)
+        : 0;
+
     return (
       <div className="max-w-2xl mx-auto py-12 animate-in fade-in zoom-in-95 duration-500">
         <Card className="border-none shadow-2xl bg-linear-to-b from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-slate-900 overflow-hidden">
@@ -221,40 +263,42 @@ export default function ReviewPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-8 p-8">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-6 rounded-2xl bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20 text-center">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="p-5 rounded-2xl bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20 text-center">
                 <div className="text-3xl font-bold text-green-600">
                   {stats.correct}
                 </div>
-                <div className="text-sm font-medium text-green-600/70 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-green-600/70 uppercase tracking-wider mt-1">
                   Correct
                 </div>
               </div>
-              <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 text-center">
+              <div className="p-5 rounded-2xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 text-center">
                 <div className="text-3xl font-bold text-red-600">
                   {stats.incorrect}
                 </div>
-                <div className="text-sm font-medium text-red-600/70 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-red-600/70 uppercase tracking-wider mt-1">
                   Mistakes
+                </div>
+              </div>
+              <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 text-center">
+                <div className="text-3xl font-bold text-amber-600 flex items-center justify-center gap-1">
+                  <Flame className="w-5 h-5" />
+                  {bestStreak}
+                </div>
+                <div className="text-xs font-semibold text-amber-600/70 uppercase tracking-wider mt-1">
+                  Best Streak
                 </div>
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="flex justify-between items-end">
-                <h3 className="font-semibold px-1">Concept Mastery</h3>
-                <span className="text-xs font-bold text-indigo-500 uppercase">
-                  {isMistakeMode ? "Reinforcement" : "Steady Progress"}
+                <h3 className="font-semibold px-1">Accuracy</h3>
+                <span className="text-sm font-bold text-indigo-500">
+                  {accuracy}%
                 </span>
               </div>
-              <Progress
-                value={
-                  stats.correct + stats.incorrect > 0
-                    ? (stats.correct / (stats.correct + stats.incorrect)) * 100
-                    : 0
-                }
-                className="h-3"
-              />
+              <Progress value={accuracy} className="h-3" />
             </div>
 
             <div className="flex flex-col gap-3 pt-4">
@@ -291,36 +335,80 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
+    <div className="max-w-2xl mx-auto space-y-6">
       {/* Session Progress Header */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {isMistakeMode && (
           <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 px-4 py-2 rounded-xl text-center">
             <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-              MARTER REVIEW: PRACTICING MISTAKES
+              ⚡ MISTAKE REVIEW MODE
             </span>
           </div>
         )}
         <div className="flex items-center justify-between text-sm font-medium text-slate-500 px-1">
-          <div className="flex items-center">
-            <span className="text-indigo-600 mr-1">{currentIndex + 1}</span>
-            <span>of {totalCards} cards</span>
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-indigo-600 mr-1">{currentIndex + 1}</span>
+              <span>of {totalCards} cards</span>
+            </div>
+            {/* Streak indicator */}
+            {streak > 0 && (
+              <div
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-all duration-300",
+                  streak >= 5
+                    ? "bg-orange-100 dark:bg-orange-900/20 text-orange-600"
+                    : streak >= 3
+                      ? "bg-amber-100 dark:bg-amber-900/20 text-amber-600"
+                      : "bg-green-100 dark:bg-green-900/20 text-green-600",
+                )}
+              >
+                <Flame
+                  className={cn("w-3.5 h-3.5", streak >= 5 && "animate-pulse")}
+                />
+                {streak} streak
+              </div>
+            )}
           </div>
-          <div className="text-indigo-600 font-bold">
-            {Math.round(progress)}%
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-green-500 font-bold">{stats.correct}</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-red-500 font-bold">{stats.incorrect}</span>
+            </div>
+            <div className="text-indigo-600 font-bold">
+              {Math.round(progress)}%
+            </div>
           </div>
         </div>
         <Progress value={progress} className="h-2" />
       </div>
 
+      {/* Streak celebration popup */}
+      {showStreakPop && (
+        <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
+          <div className="animate-in zoom-in-50 fade-in duration-300 bg-gradient-to-r from-orange-500 to-amber-500 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 text-xl font-black">
+            <Zap className="w-7 h-7" />
+            {streak} Streak! 🔥
+          </div>
+        </div>
+      )}
+
       {/* The Flashcard */}
       {currentCard && (
-        <Flashcard
-          card={currentCard}
-          isFlipped={isFlipped}
-          onFlip={() => setIsFlipped(!isFlipped)}
-          className="h-112.5"
-        />
+        <div
+          className={cn(
+            "transition-all duration-300",
+            isTransitioning ? "opacity-0 scale-95" : "opacity-100 scale-100",
+          )}
+        >
+          <Flashcard
+            card={currentCard}
+            isFlipped={isFlipped}
+            onFlip={() => setIsFlipped(!isFlipped)}
+            className="h-112.5"
+          />
+        </div>
       )}
 
       {/* Type Your Guess Section */}
@@ -336,28 +424,28 @@ export default function ReviewPage() {
               type="text"
               value={guess}
               onChange={(e) => setGuess(e.target.value)}
-              onKeyDown={handleKeyDown}
               placeholder="Type the word here..."
               className="flex-1 h-14 px-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-lg font-medium focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-500 transition-colors placeholder:text-slate-400"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
             />
-            <Button
-              onClick={checkGuess}
-              disabled={!guess.trim()}
-              className="h-14 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base disabled:opacity-40 transition-all"
-            >
-              <ArrowRight className="w-5 h-5" />
-            </Button>
           </div>
-
-          <button
-            onClick={() => setIsFlipped(true)}
-            className="w-full text-center text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors py-1"
-          >
-            or skip and reveal answer
-          </button>
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs text-slate-400">
+              Press{" "}
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono text-[10px] border border-slate-200 dark:border-slate-700">
+                Enter
+              </kbd>{" "}
+              to check your answer
+            </p>
+            <button
+              onClick={() => setIsFlipped(true)}
+              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            >
+              skip & reveal →
+            </button>
+          </div>
         </div>
       )}
 
@@ -381,7 +469,7 @@ export default function ReviewPage() {
                 <X className="w-5 h-5 text-red-600" />
               </div>
             )}
-            <div>
+            <div className="flex-1">
               <p
                 className={cn(
                   "font-bold",
@@ -417,34 +505,49 @@ export default function ReviewPage() {
       )}
 
       {/* Action Controls */}
-      <div className="space-y-6">
+      <div className="space-y-4">
         {isFlipped && (
-          <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-4 duration-300">
-            <Button
-              onClick={() => handleResponse(false)}
-              variant="outline"
-              className={cn(
-                "h-20 text-lg font-bold rounded-2xl flex flex-col items-center justify-center space-y-1 transition-all",
-                guessResult === "incorrect"
-                  ? "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20 text-red-600 ring-2 ring-red-200 dark:ring-red-800"
-                  : "border-red-200 dark:border-red-900/30 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10",
+          <div className="space-y-3 animate-in slide-in-from-top-4 duration-300">
+            <div className="grid grid-cols-2 gap-4">
+              <Button
+                onClick={() => handleResponse(false)}
+                variant="outline"
+                className={cn(
+                  "h-16 text-base font-bold rounded-2xl flex flex-col items-center justify-center transition-all",
+                  guessResult === "incorrect"
+                    ? "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20 text-red-600 ring-2 ring-red-200 dark:ring-red-800"
+                    : "border-red-200 dark:border-red-900/30 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10",
+                )}
+              >
+                <X className="w-5 h-5 mb-0.5" />
+                <span>It was tricky</span>
+              </Button>
+              <Button
+                onClick={() => handleResponse(true)}
+                className={cn(
+                  "h-16 text-base font-bold rounded-2xl flex flex-col items-center justify-center transition-all",
+                  guessResult === "correct"
+                    ? "bg-green-600 hover:bg-green-700 text-white shadow-lg ring-2 ring-green-300 dark:ring-green-700"
+                    : "bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none shadow-lg",
+                )}
+              >
+                <Check className="w-5 h-5 mb-0.5" />
+                <span>Got it right!</span>
+              </Button>
+            </div>
+            <p className="text-center text-xs text-slate-400">
+              Press{" "}
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono text-[10px] border border-slate-200 dark:border-slate-700">
+                Enter
+              </kbd>{" "}
+              to continue
+              {guessResult && (
+                <span className="ml-1 text-slate-500">
+                  →{" "}
+                  {guessResult === "correct" ? "Got it right" : "It was tricky"}
+                </span>
               )}
-            >
-              <X className="w-6 h-6" />
-              <span>It was tricky</span>
-            </Button>
-            <Button
-              onClick={() => handleResponse(true)}
-              className={cn(
-                "h-20 text-lg font-bold rounded-2xl flex flex-col items-center justify-center space-y-1 transition-all",
-                guessResult === "correct"
-                  ? "bg-green-600 hover:bg-green-700 text-white shadow-lg ring-2 ring-green-300 dark:ring-green-700"
-                  : "bg-green-600 hover:bg-green-700 text-white shadow-green-200 dark:shadow-none shadow-lg",
-              )}
-            >
-              <Check className="w-6 h-6" />
-              <span>Got it right!</span>
-            </Button>
+            </p>
           </div>
         )}
 

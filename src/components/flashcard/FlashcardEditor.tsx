@@ -13,7 +13,6 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { useFlashcards } from "@/hooks/useFlashcards";
 import { Card as CardType } from "@/types";
 import { cn } from "@/lib/utils";
@@ -34,13 +33,7 @@ export function FlashcardEditor({
   const [correctChar, setCorrectChar] = useState(
     initialData?.correct_char || "",
   );
-  const [confusedWith, setConfusedWith] = useState<string[]>(
-    initialData?.confused_with || [],
-  );
-  const [tags, setTags] = useState<string[]>(initialData?.tags || []);
   const [notes, setNotes] = useState(initialData?.notes || "");
-  const [currentTag, setCurrentTag] = useState("");
-  const [currentConfused, setCurrentConfused] = useState("");
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(
@@ -77,29 +70,7 @@ export function FlashcardEditor({
     }
   };
 
-  const addTag = () => {
-    if (currentTag && !tags.includes(currentTag)) {
-      setTags([...tags, currentTag]);
-      setCurrentTag("");
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
-
-  const addConfused = () => {
-    if (currentConfused && !confusedWith.includes(currentConfused)) {
-      setConfusedWith([...confusedWith, currentConfused]);
-      setCurrentConfused("");
-    }
-  };
-
-  const removeConfused = (char: string) => {
-    setConfusedWith(confusedWith.filter((c) => c !== char));
-  };
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!correctChar || (!imageFile && !initialData?.image_url)) {
       alert("Please provide at least the correct character and an image.");
       return;
@@ -107,8 +78,8 @@ export function FlashcardEditor({
 
     const cardData = {
       correct_char: correctChar,
-      confused_with: confusedWith,
-      tags,
+      confused_with: [] as string[],
+      tags: [] as string[],
       notes,
       image_url: initialData?.image_url || "",
       box: initialData?.box ?? 1,
@@ -128,7 +99,15 @@ export function FlashcardEditor({
     if (result && onSuccess) {
       onSuccess();
     }
-  };
+  }, [
+    correctChar,
+    notes,
+    imageFile,
+    initialData,
+    createCard,
+    updateCard,
+    onSuccess,
+  ]);
 
   const handlePaste = useCallback((e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -150,10 +129,32 @@ export function FlashcardEditor({
     }
   }, []);
 
+  // Double-Enter to save
+  const lastEnterRef = useRef<number>(0);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      // Don't intercept Enter in textarea (notes field)
+      if ((e.target as HTMLElement)?.tagName === "TEXTAREA") return;
+
+      const now = Date.now();
+      if (now - lastEnterRef.current < 400) {
+        e.preventDefault();
+        handleSave();
+      }
+      lastEnterRef.current = now;
+    },
+    [handleSave],
+  );
+
   React.useEffect(() => {
     window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
-  }, [handlePaste]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("paste", handlePaste);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handlePaste, handleKeyDown]);
 
   return (
     <Card className="w-full max-w-2xl mx-auto border-none shadow-none bg-transparent lg:bg-white lg:dark:bg-slate-900 lg:border lg:shadow-sm">
@@ -226,98 +227,29 @@ export function FlashcardEditor({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Correction Section */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="correct-char">Correct Character / Word</Label>
-              <Input
-                id="correct-char"
-                placeholder="e.g. 'f' or 'Ab'"
-                value={correctChar}
-                onChange={(e) => setCorrectChar(e.target.value)}
-                className="text-lg font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Frequently Confused With</Label>
-              <div className="flex space-x-2">
-                <Input
-                  placeholder="e.g. 'b', 'l'"
-                  value={currentConfused}
-                  onChange={(e) => setCurrentConfused(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addConfused()}
-                />
-                <Button variant="secondary" onClick={addConfused}>
-                  Add
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {confusedWith.map((char) => (
-                  <Badge
-                    key={char}
-                    variant="destructive"
-                    className="flex items-center space-x-1 pl-2 pr-1"
-                  >
-                    <span>{char}</span>
-                    <button
-                      onClick={() => removeConfused(char)}
-                      className="hover:bg-red-700/50 rounded-full p-0.5"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="correct-char">Correct Character / Word</Label>
+            <Input
+              id="correct-char"
+              placeholder="e.g. 'f' or 'Butler'"
+              value={correctChar}
+              onChange={(e) => setCorrectChar(e.target.value)}
+              className="text-lg font-bold"
+            />
           </div>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Tags</Label>
-              <div className="flex space-x-2">
-                <Input
-                  placeholder="e.g. 'loops', 'ascenders'"
-                  value={currentTag}
-                  onChange={(e) => setCurrentTag(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addTag()}
-                />
-                <Button variant="secondary" onClick={addTag}>
-                  Add
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {tags.map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="outline"
-                    className="flex items-center space-x-1 pl-2 pr-1"
-                  >
-                    <span className="italic">#{tag}</span>
-                    <button
-                      onClick={() => removeTag(tag)}
-                      className="hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full p-0.5"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes / Observations</Label>
-              <Textarea
-                id="notes"
-                placeholder="Notice special loops or connector height..."
-                className="h-24 resize-none"
-                value={notes}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setNotes(e.target.value)
-                }
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes / Observations</Label>
+            <Textarea
+              id="notes"
+              placeholder="Any additional notes about this entry..."
+              className="h-24 resize-none"
+              value={notes}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setNotes(e.target.value)
+              }
+            />
           </div>
         </div>
 

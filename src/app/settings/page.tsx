@@ -8,10 +8,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Loader2,
-  Layers,
-  Plus,
 } from "lucide-react";
-import { Label } from "@/components/ui/Label";
 import { Button } from "@/components/ui/Button";
 import {
   Card,
@@ -21,14 +18,11 @@ import {
   CardDescription,
 } from "@/components/ui/Card";
 import { useFlashcards } from "@/hooks/useFlashcards";
-import { useSettings } from "@/hooks/useSettings";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/Input";
 
 export default function SettingsPage() {
   const { getCards } = useFlashcards();
-  const { boxes, addBox, updateBox, removeBox } = useSettings();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -172,79 +166,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6">
-        {/* Leitner Box Management */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Layers className="w-5 h-5 text-indigo-600" />
-              <CardTitle>Box Management</CardTitle>
-            </div>
-            <CardDescription>
-              Customize your Leitner system. Name your boxes and set review
-              intervals.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              {boxes.map((box, index) => (
-                <div
-                  key={box.id}
-                  className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center font-bold text-indigo-600 shrink-0">
-                    {index + 1}
-                  </div>
-                  <div className="flex-1 w-full space-y-1">
-                    <Label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold ml-1">
-                      Box Name
-                    </Label>
-                    <Input
-                      value={box.name}
-                      onChange={(e) =>
-                        updateBox(box.id, { name: e.target.value })
-                      }
-                      className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 h-10"
-                      placeholder="e.g. Alphabets"
-                    />
-                  </div>
-                  <div className="w-full sm:w-32 space-y-1">
-                    <Label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold ml-1">
-                      Interval (Days)
-                    </Label>
-                    <Input
-                      type="number"
-                      value={box.intervalDays}
-                      onChange={(e) =>
-                        updateBox(box.id, {
-                          intervalDays: parseInt(e.target.value) || 0,
-                        })
-                      }
-                      className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 h-10"
-                    />
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeBox(box.id)}
-                    disabled={boxes.length <= 1}
-                    className="text-slate-400 hover:text-red-500 mt-5 sm:mt-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              onClick={addBox}
-              className="w-full border-dashed border-2 py-6 rounded-2xl hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 transition-all"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add New Box
-            </Button>
-          </CardContent>
-        </Card>
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">

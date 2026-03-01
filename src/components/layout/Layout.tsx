@@ -6,12 +6,12 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Library,
+  BookOpen,
   PlayCircle,
   Settings,
   Menu,
   X,
   ArrowLeftRight,
-  BarChart3,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,9 +21,9 @@ import { AuthForm } from "@/components/auth/AuthForm";
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "My Cards", href: "/cards", icon: Library },
+  { name: "Dictionary", href: "/dictionary", icon: BookOpen },
   { name: "Compare", href: "/compare", icon: ArrowLeftRight },
   { name: "Review", href: "/review", icon: PlayCircle },
-  { name: "Progress", href: "/progress", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 

@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import { Plus, Search, Loader2, Library, Settings } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Plus, Search, Loader2, Library } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Flashcard } from "@/components/flashcard/Flashcard";
@@ -15,18 +14,18 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { useFlashcards } from "@/hooks/useFlashcards";
-import { useSettings } from "@/hooks/useSettings";
+import { Pagination } from "@/components/ui/Pagination";
 import { Card as CardType } from "@/types";
-import { cn } from "@/lib/utils";
+
+const CARDS_PER_PAGE = 12;
 
 export default function CardsPage() {
   const { getCards, loading, error } = useFlashcards();
-  const { boxes } = useSettings();
   const [cards, setCards] = useState<CardType[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
-  const [filterBox, setFilterBox] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchCards = async () => {
     const data = await getCards();
@@ -41,18 +40,15 @@ export default function CardsPage() {
     fetchCards();
   }, [getCards]);
 
-  const filteredCards = cards.filter((card) => {
-    const matchesSearch =
-      card.correct_char.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      card.tags?.some((tag) =>
-        tag.toLowerCase().includes(searchQuery.toLowerCase()),
-      ) ||
-      card.notes?.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredCards = cards.filter((card) =>
+    card.correct_char.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
-    const matchesBox = filterBox === null || card.box === filterBox;
-
-    return matchesSearch && matchesBox;
-  });
+  const totalPages = Math.ceil(filteredCards.length / CARDS_PER_PAGE);
+  const paginatedCards = useMemo(() => {
+    const start = (currentPage - 1) * CARDS_PER_PAGE;
+    return filteredCards.slice(start, start + CARDS_PER_PAGE);
+  }, [filteredCards, currentPage]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -84,9 +80,7 @@ export default function CardsPage() {
               </DialogTitle>
             </DialogHeader>
             <FlashcardEditor
-              initialData={
-                editingCard || (filterBox ? { box: filterBox } : undefined)
-              }
+              initialData={editingCard || undefined}
               onSuccess={() => {
                 setIsEditorOpen(false);
                 setEditingCard(null);
@@ -101,57 +95,17 @@ export default function CardsPage() {
         </Dialog>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            placeholder="Search cards..."
-            className="pl-10 h-11 md:h-12 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-2xl overflow-x-auto whitespace-nowrap scrollbar-hide no-scrollbar w-full sm:w-auto shrink-0">
-          <Button
-            variant={filterBox === null ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setFilterBox(null)}
-            className={cn(
-              "rounded-xl px-4 h-9",
-              filterBox === null
-                ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
-                : "text-slate-500 hover:text-indigo-600",
-            )}
-          >
-            All
-          </Button>
-          {boxes.map((box) => (
-            <Button
-              key={box.id}
-              variant={filterBox === box.id ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setFilterBox(box.id)}
-              className={cn(
-                "rounded-xl px-4 h-9",
-                filterBox === box.id
-                  ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm transition-all"
-                  : "text-slate-500 hover:text-indigo-600",
-              )}
-            >
-              {box.name}
-            </Button>
-          ))}
-          <Link href="/settings">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-slate-400 hover:text-indigo-600 rounded-xl px-3 transition-colors"
-              title="Manage Boxes"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          </Link>
-        </div>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Input
+          placeholder="Search cards..."
+          className="pl-10 h-11 md:h-12 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
+          }}
+        />
       </div>
 
       {loading ? (
@@ -171,18 +125,35 @@ export default function CardsPage() {
           </Button>
         </div>
       ) : filteredCards.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCards.map((card) => (
-            <Flashcard
-              key={card.id}
-              card={card}
-              onDelete={fetchCards}
-              onEdit={() => {
-                setEditingCard(card);
-                setIsEditorOpen(true);
-              }}
-            />
-          ))}
+        <div className="space-y-8">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">
+              Showing {(currentPage - 1) * CARDS_PER_PAGE + 1}–
+              {Math.min(currentPage * CARDS_PER_PAGE, filteredCards.length)} of{" "}
+              {filteredCards.length} cards
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {paginatedCards.map((card) => (
+              <Flashcard
+                key={card.id}
+                card={card}
+                onDelete={fetchCards}
+                onEdit={() => {
+                  setEditingCard(card);
+                  setIsEditorOpen(true);
+                }}
+              />
+            ))}
+          </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={(page) => {
+              setCurrentPage(page);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center space-y-4 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">

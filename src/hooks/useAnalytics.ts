@@ -36,7 +36,7 @@ export function useAnalytics() {
     0, 0, 0, 0, 0,
   ]);
   const [confusedLetters, setConfusedLetters] = useState<
-    { char: string; errors: number; total: number }[]
+    { id: string; char: string; errors: number; total: number }[]
   >([]);
   const [reviewHistory, setReviewHistory] = useState<ReviewSessionData[]>([]);
   const [totalReviews, setTotalReviews] = useState(0);
@@ -98,8 +98,11 @@ export function useAnalytics() {
 
       // 3. Most Confused Letters
       const letterErrors = cards
-        .filter((c) => (c.incorrect_count || 0) > 0)
+        .filter(
+          (c) => (c.incorrect_count || 0) > 0 && (c.box || 1) <= 3, // Only show cards still in early boxes (not mastered)
+        )
         .map((c) => ({
+          id: c.id,
           char: c.correct_char,
           errors: c.incorrect_count || 0,
           total: (c.correct_count || 0) + (c.incorrect_count || 0),
